@@ -3,7 +3,7 @@ import { globby } from "zx";
 import { BLANK, concatPdfsToPortraitA4WithPageNumbers, convertOdToPdf, convertSvgToPdf, getNumberOfPages, scalePdfToA4, scalePdfToA5Booklet, scalePdfToA6Booklet } from "./convert";
 import { promises as fs } from "fs";
 import dayjs from "dayjs";
-import { getCommitId } from "./git";
+import { getCommitId, getCommitDate } from "./git";
 import { TUNES_AFTER, TUNES_BEFORE, TEMP_OPTIONS, TUNE_SETS, FRONT, BACK, TUNE_DISPLAY_NAME } from "../../config";
 import { SheetbookSpec, SheetFormat, SheetType } from "ror-sheetbook-common";
 import { escape } from "lodash";
@@ -25,6 +25,7 @@ export async function generateSheets(inDir: string, specs: SheetbookSpec[]): Pro
 
     const tunePdfs = await generateTunePdfs(inDir, new Set([...singleTunes, ...bookletTunes]));
     const pageNumbers = await getPageNumbers(tunePdfs, new Set([...bookletTunes]));
+    const tuneDates = await getCommitDates(inDir, new Set([...bookletTunes]));
 
     for (const spec of specs) {
         if (spec.type === SheetType.SINGLE) {
@@ -45,10 +46,10 @@ export async function generateSheets(inDir: string, specs: SheetbookSpec[]): Pro
             ];
 
             if (spec.format === SheetFormat.A4) {
-                await concatPdfsToPortraitA4WithPageNumbers(files, spec.outFile);
+                await concatPdfsToPortraitA4WithPageNumbers(files, spec.outFile, tuneDates);
             } else if (spec.format === SheetFormat.A5 || spec.format === SheetFormat.A6) {
                 const a4BookletPdf = await file({ ...TEMP_OPTIONS, postfix: 'a4.pdf' });
-                await concatPdfsToPortraitA4WithPageNumbers(files, a4BookletPdf.path);
+                await concatPdfsToPortraitA4WithPageNumbers(files, a4BookletPdf.path, tuneDates);
                 try {
                     await (spec.format === SheetFormat.A5 ? scalePdfToA5Booklet : scalePdfToA6Booklet)(a4BookletPdf.path, spec.outFile);
                 } finally {
@@ -160,6 +161,25 @@ async function getPageNumbers(tunePdfs: DirectoryResult, tunes: Set<string>): Pr
     const result = new Map<string, number>();
     for (const tune of tunes) {
         result.set(tune, await getNumberOfPages(`${tunePdfs.path}/${tune}.pdf`));
+    }
+    return result;
+}
+
+/**
+ * Determines the last commit date for each tune.
+ * @param inDir The directory to the local working copy of the sheetbook repository (https://github.com/rhythms-of-resistance/sheetbook)
+ * @param tunes The tunes to determine
+ * @return A map of tune name to last commit date
+ */
+async function getCommitDates(inDir: string, tunes: Set<string>): Promise<Map<string, string>> {
+    const result = new Map<string, string>();
+    for (const tune of tunes) {
+        const exists = await globby(`${inDir}/${tune}.ods`);
+        if (exists.length !== 1) {
+            continue
+        }
+
+        result.set(tune, await getCommitDate(inDir, `${tune}.ods`));
     }
     return result;
 }
