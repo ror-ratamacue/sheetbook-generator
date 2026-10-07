@@ -1,6 +1,6 @@
 import { dir, DirectoryResult, file, FileResult } from "tmp-promise";
 import { globby } from "zx";
-import { BLANK, concatPdfsToPortraitA4WithPageNumbers, convertOdToPdf, convertSvgToPdf, getNumberOfPages, scalePdfToA4, scalePdfToA5Booklet, scalePdfToA6Booklet } from "./convert";
+import { BLANK, concatPdfsToPortraitA4WithPageNumbers, convertOdToPdf, convertSvgToPdf, getNumberOfPages, scalePdfToA4, scalePdfToA4WithVersion, scalePdfToA5Booklet, scalePdfToA6Booklet } from "./convert";
 import { promises as fs } from "fs";
 import dayjs from "dayjs";
 import { getCommitId, getCommitDate } from "./git";
@@ -25,14 +25,22 @@ export async function generateSheets(inDir: string, specs: SheetbookSpec[]): Pro
 
     const tunePdfs = await generateTunePdfs(inDir, new Set([...singleTunes, ...bookletTunes]));
     const pageNumbers = await getPageNumbers(tunePdfs, new Set([...bookletTunes]));
-    const tuneDates = await getCommitDates(inDir, new Set([...bookletTunes]));
+    const tuneDates = specs.some((spec) => spec.version) ? await getCommitDates(inDir, new Set([...singleTunes, ...bookletTunes])) : new Map();
 
     for (const spec of specs) {
         if (spec.type === SheetType.SINGLE) {
-            await scalePdfToA4(`${tunePdfs.path}/${spec.tune}.pdf`, spec.outFile);
+            if (spec.version) {
+                await scalePdfToA4WithVersion(`${tunePdfs.path}/${spec.tune}.pdf`, spec.outFile, tuneDates.get(spec.tune));
+            } else {
+                await scalePdfToA4(`${tunePdfs.path}/${spec.tune}.pdf`, spec.outFile);
+            }
         } else if (spec.type === SheetType.MULTIPLE) {
             for (const tune of resolveTuneSet(spec.tunes, existingTunes)) {
-                await scalePdfToA4(`${tunePdfs.path}/${tune}.pdf`, `${spec.outDir}/${tune}.pdf`);
+                if (spec.version) {
+                    await scalePdfToA4WithVersion(`${tunePdfs.path}/${tune}.pdf`, `${spec.outDir}/${tune}.pdf`, tuneDates.get(tune));
+                } else {
+                    await scalePdfToA4(`${tunePdfs.path}/${tune}.pdf`, `${spec.outDir}/${tune}.pdf`);
+                }
             }
         } else if (spec.type === SheetType.BOOKLET) {
             const resolvedTunes = resolveTuneSet(spec.tunes, existingTunes);

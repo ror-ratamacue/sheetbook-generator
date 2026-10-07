@@ -67,6 +67,48 @@ export async function scalePdfToA4(inFile: string, outFile: string): Promise<voi
 }
 
 /**
+ * Create a copy of the given PDF file scaled to A4 and with the version included.
+ * @param inFile The path of the PDF file to scale
+ * @param outFile The path of the scaled PDF file to be generated
+ * @param version The version to be included, if the string is undefined nothing is added
+ */
+export async function scalePdfToA4WithVersion(inFile: string, outFile: string, version: string | undefined): Promise<void> {
+    const isLandscape = await isLandscapePdf(inFile);
+    const versionText = version != undefined ? `Tune version: ${version}` : ''
+    await runPdfLatex(
+`\\documentclass{book}
+\\usepackage[a4paper,top=15mm,bottom=24mm,left=15mm,right=15mm,${isLandscape? ',landscape' : ''}]{geometry}
+\\usepackage[final]{pdfpages}
+\\usepackage{fancyhdr}
+\\usepackage{fontspec}
+\\setmainfont{Arial}
+\\newcommand{\\TheVersion}{}
+\\newcommand{\\Version}[1]{\\renewcommand{\\TheVersion}{#1}}
+\\fancyhead{}
+\\fancyfoot{}
+\\fancyfoot[R]{\\small ${versionText}}
+\\renewcommand{\\headrulewidth}{0pt}
+\\renewcommand{\\footrulewidth}{0pt}
+\\includepdfset{pages=-}
+\\pagestyle{fancy}
+
+% See https://tex.stackexchange.com/a/395847
+\\newsavebox{\\temp}
+\\newlength{\\tempwidth}
+\\newlength{\\tempheight}
+\\newcommand{\\addpdf}[1]{%
+    \\sbox{\\temp}{\\includegraphics{#1}}%
+    \\setlength{\\tempwidth}{\\widthof{\\usebox{\\temp}}}%
+    \\setlength{\\tempheight}{\\heightof{\\usebox{\\temp}}}%
+    \\includepdf[pagecommand=\\thispagestyle{fancy}]{#1}
+}
+
+\\begin{document}
+    \\addpdf{${inFile}}
+\\end{document}
+`, outFile);
+}
+/**
  * Arranges the pages of the given PDF file into an A5 booklet. The generated file will be in landscape A4 format, with each page
  * containing two pages of the input file scaled to portrait A5. The pages will be rearranged in such a way that when printing the
  * output file double-sided on A4, it can be bound into an A5 booklet. The page count of the input file needs to be dividable by 4.
